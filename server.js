@@ -4,6 +4,7 @@ const cors = require("cors");
 const helmet = require("helmet");
 const authRoutes = require("./routes/authRoutes");
 const userRoutes = require("./routes/userRoutes");
+const approvalRoutes = require("./routes/approvalRoutes");
 
 dotenv.config();
 
@@ -15,6 +16,7 @@ app.use(helmet());
 
 app.use("/auth", authRoutes);
 app.use("/user", userRoutes);
+app.use("/app", approvalRoutes);
 
 const PORT = process.env.PORT || 5000;
 
