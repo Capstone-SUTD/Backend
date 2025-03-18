@@ -5,6 +5,126 @@ const fs = require("fs");
 const FormData = require('form-data'); 
 const streamifier = require('streamifier');
 
+
+// Helper function to get project details from the database
+async function getProjectDetails(projectId) {
+  try {
+
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('*')
+      .eq('projectid', projectId)
+      .single(); 
+
+    if (projectError || !project) {
+      throw new Error('Project details not found.');
+    }
+
+    const { data: cargos, error: cargosError } = await supabase
+      .from('cargo')
+      .select('*')
+      .eq('projectid', projectId);
+
+    if (cargosError || !cargos) {
+      throw new Error('Cargo details not found.');
+    }
+
+    const { data: scopes, error: scopesError } = await supabase
+      .from('scope')
+      .select('*')
+      .eq('projectid', projectId);
+
+    if (scopesError || !scopes) {
+      throw new Error('Scope details not found.');
+    }
+
+    return { project, cargos, scopes };
+  } catch (error) {
+    throw new Error(`Error fetching project details: ${error.message}`);
+  }
+}
+
+// Helper function to transform project data into the required format
+function transformProjectData({ project, cargos, scopes }) {
+
+    console.log(cargos)
+
+  const transformedData = {
+    projectid: project.projectid,
+    client_name: project.client,
+    project_name: project.projectname,
+    start_location: project.startdestination,
+    end_location: project.enddestination,
+    cargos: cargos.map(cargo => ({
+      cargo_name: cargo.cargoname,
+      dimensions: {
+        length: cargo.length,
+        breadth: cargo.breadth,
+        height: cargo.height,
+        weight: cargo.weight
+      },
+      quantity: cargo.quantity  
+    })),
+    scopes: scopes.map(scope => ({
+      start: scope.start,
+      description: scope.work,
+      equipment: scope.equipment || ""  
+    }))
+  };
+
+  console.log(transformedData);
+  return transformedData;
+}
+
+function categorizeScope(scopes) {
+    let hasLifting = false;
+    let hasTransportation = false;
+  
+    scopes.forEach(scope => {
+      if (scope.work.toLowerCase().includes("lifting")) {
+        hasLifting = true;
+      }
+      if (scope.work.toLowerCase().includes("transportation")) {
+        hasTransportation = true;
+      }
+    });
+  
+    if (hasLifting && hasTransportation) return "LiftingandTransportation";
+    if (hasLifting) return "Lifting";
+    if (hasTransportation) return "Transportation";
+    return "Other";
+  }  
+
+// Function to process the request and call the external API
+async function processRequest(req, res) {
+  const { projectid } = req.body;
+
+  try {
+    if (!projectid) {
+      return res.status(400).json({ error: 'Project ID is required' });
+    }
+
+    const projectDetails = await getProjectDetails(projectid);
+
+    const requestBody = transformProjectData(projectDetails);
+    const response1 = await axios.post('http://127.0.0.1:5000/generate_ms', requestBody);
+
+    const scopeCategory = categorizeScope(projectDetails.scopes);
+    console.log(scopeCategory);
+    const scopeRequestBody = { scope: scopeCategory, projectid : projectid};
+    const response2 = await axios.post('http://127.0.0.1:5000/generate_ra', scopeRequestBody);
+
+    return res.status(200).json({
+      first_api_response: response1.data,
+      second_api_response: response2.data
+    });
+
+  } catch (error) {
+    console.error(error.message);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
 async function saveProject(req, res) {
     const form = new formidable.IncomingForm();
 
@@ -216,4 +336,4 @@ async function changeProjectStage(req, res) {
 
 }
 
-module.exports = { getProjects, getStakeholders, newProject, changeProjectStage, saveProject };
+module.exports = { getProjects, getStakeholders, newProject, changeProjectStage, saveProject, processRequest };
