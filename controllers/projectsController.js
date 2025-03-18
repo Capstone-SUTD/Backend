@@ -1,4 +1,112 @@
 const supabase = require("../config/db");
+const axios = require("axios");
+const formidable = require('formidable');
+const fs = require("fs");
+const FormData = require('form-data'); 
+const streamifier = require('streamifier');
+
+async function saveProject(req, res) {
+    const form = new formidable.IncomingForm();
+
+    form.parse(req, async (err, fields, files) => {
+        if (err) {
+            return res.status(500).json({ error: err.message });
+        }
+
+        const { projectid, scope } = fields;
+        const VendorMS = files.VendorMS[0];
+        const VendorRA = files.VendorRA[0];
+
+        if (!projectid || !scope) {
+            return res.status(400).json({ error: "Invalid request format" });
+        }
+
+        const projectidInt = parseInt(projectid[0]);
+        const scopeArray = scope.map(item => JSON.parse(item)).flat();
+        console.log(projectidInt, scopeArray);
+
+        // Determine `startdestination` and `enddestination`
+        const startdestination = scopeArray[0]?.start;
+        const enddestination = scopeArray[scopeArray.length - 1]?.end;
+        console.log(startdestination, enddestination);
+
+        // Store in `projects` table
+        await supabase
+            .from("projects")
+            .update({ startdestination, enddestination })
+            .eq("projectid", projectidInt);
+
+        // Insert all scope items
+        const scopeData = scopeArray.map(({ start, end, work, equipment }) => ({
+            projectid: projectidInt,
+            start,
+            end,
+            work,
+            equipment,
+        }));
+        await supabase.from("scope").insert(scopeData);
+
+        // **Filter Equipment that contains "crane"**
+        const craneEquipment = scopeArray.find(({ equipment }) =>
+            equipment.toLowerCase().includes("crane")
+        );
+        if (craneEquipment) {
+            const equipment = craneEquipment.equipment;
+        }
+
+        // Handle VendorMS API Call
+        if (VendorMS) {
+            const vendorMSPath = VendorMS.filepath;
+            const vendorMSStream = fs.createReadStream(vendorMSPath);
+
+            // Prepare form-data for VendorMS
+            const vendorMSForm = new FormData();
+            vendorMSForm.append("ms", vendorMSStream, { filename: "vendorMSFile" });
+            vendorMSForm.append("scope", "Lifting");
+            vendorMSForm.append("equipment", craneEquipment.equipment ? craneEquipment.equipment : "300 ton mobile crane");
+
+            // Send the request with form-data
+            try {
+                const flaskResponse = await axios.post("http://127.0.0.1:5000/MSReader", vendorMSForm, {
+                    headers: {
+                        ...vendorMSForm.getHeaders(), // Automatically set proper headers for form-data
+                    }
+                });
+                console.log("MS Read Successful");
+
+            } catch (error) {
+                console.error("Error in VendorMS API Call:", error.message);
+            }
+        }
+
+        // Handle VendorRA API Call
+        if (VendorRA) {
+            const vendorRAPath = VendorRA.filepath;
+            const vendorRABuffer = fs.readFileSync(vendorRAPath);
+            const vendorRAStream = streamifier.createReadStream(vendorRABuffer);
+
+            // Prepare form-data for VendorRA
+            const vendorRAForm = new FormData();
+            vendorRAForm.append("file", vendorRAStream, { filename: "vendorRAFile" });
+
+            // Send the request with form-data
+            try {
+                const flaskResponse = await axios.post("http://127.0.0.1:5000/RAReader", vendorRAForm, {
+                    headers: {
+                        ...vendorRAForm.getHeaders(), // Automatically set proper headers for form-data
+                    }
+                });
+                console.log("RA Read Successful");
+
+            } catch (error) {
+                console.error("Error in VendorRA API Call:", error);
+            }
+        }
+
+        // Respond with success message
+        res.json({ message: "Project scope updated and Document Readers ran successfully" });
+    });
+}
 
 async function getProjects(req, res) {
     const userId = req.user.id;
@@ -108,4 +216,4 @@ async function changeProjectStage(req, res) {
 
 }
 
-module.exports = { getProjects, getStakeholders, newProject, changeProjectStage };
+module.exports = { getProjects, getStakeholders, newProject, changeProjectStage, saveProject };
