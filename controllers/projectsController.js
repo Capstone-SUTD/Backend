@@ -4,7 +4,7 @@ const formidable = require('formidable');
 const fs = require("fs");
 const FormData = require('form-data');
 const streamifier = require('streamifier');
-const getFullChecklist = require("../utils/azureChecklist.js")
+const { getFullChecklist } = require("../utils/azureFiles.js")
 
 
 // Helper function to get project details from the database
@@ -358,7 +358,7 @@ async function getScope(req, res) {
         scopeArr.push(obj["work"]);
       }
     })
-
+    res.json(scopeArr)
     return scopeArr
   } catch (err) {
     console.error("Unexpected error:", err);
