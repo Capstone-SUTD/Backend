@@ -1,10 +1,11 @@
+require("dotenv").config();
 const supabase = require("../config/db");
 const axios = require("axios");
 const formidable = require('formidable');
 const fs = require("fs");
 const FormData = require('form-data');
 const streamifier = require('streamifier');
-const { getFullChecklist } = require("../utils/azureFiles.js")
+const { getFullChecklist, uploadFile, generateSasUrl } = require("../utils/azureFiles.js")
 
 
 // Helper function to get project details from the database
@@ -413,17 +414,15 @@ async function generateChecklist(req, res) {
 
 async function updateChecklistCompletion(req, res) {
   try {
-    const { type, subtype, projectid } = req.body;
+    const { taskid } = req.body;
 
-    if (!type || !subtype || !projectid) {
-      return res.status(400).json({ error: "type, subtype and projectid is required" });
+    if (!taskid) {
+      return res.status(400).json({ error: "taskid is required" });
     }
     const { data: existingData, error: fetchError } = await supabase
       .from("checklist")
       .select("completed")
-      .eq("type", type)
-      .eq("subtype", subtype)
-      .eq("projectid", projectid)
+      .eq("taskid", taskid)
       .single();
 
     if (fetchError || !existingData) {
@@ -435,9 +434,7 @@ async function updateChecklistCompletion(req, res) {
     const { data, error } = await supabase
       .from("checklist")
       .update({ completed: newCompletedValue })
-      .eq("type", type)
-      .eq("subtype", subtype)
-      .eq("projectid", projectid)
+      .eq("taskid", taskid)
       .select();
 
     if (error) {
@@ -459,7 +456,7 @@ async function getProjectChecklist(req, res) {
     const { projectid } = req.body;
     const { data, error } = await supabase
       .from("checklist")
-      .select("type, subtype, completed")
+      .select("taskid, type, subtype, completed, comments")
       .eq("projectid", projectid)
 
     let uniqueScopes;
@@ -475,9 +472,9 @@ async function getProjectChecklist(req, res) {
       filteredChecklist[scope] = fullChecklist[scope]
     })
     for (const checklistItem of data) {
-      const { type, subtype, completed } = checklistItem;
+      const { type, subtype, completed, comments } = checklistItem;
       if (filteredChecklist[type] && filteredChecklist[type][subtype]) {
-        filteredChecklist[type][subtype] = { ...filteredChecklist[type][subtype], completed };
+        filteredChecklist[type][subtype] = { ...filteredChecklist[type][subtype], taskid, completed, comments };
       }
     }
     res.json(filteredChecklist);
@@ -487,4 +484,112 @@ async function getProjectChecklist(req, res) {
   }
 }
 
-module.exports = { getProjects, getStakeholders, newProject, changeProjectStage, saveProject, processRequest, getScope, generateChecklist, insertChecklistEntries, updateChecklistCompletion, getProjectChecklist };
+async function getTaskComments(req, res) {
+  const { taskid } = req.body;
+
+  if (!taskid) {
+    return res.status(400).json({ error: "Missing taskid" });
+  }
+
+  const { data, error } = await supabase
+    .from("checklist")
+    .select("comments")
+    .eq("taskid", taskid);
+
+  if (error) {
+    console.error("Error fetching comments:", error.message);
+    return res.status(500).json({ error: error.message });
+  }
+  return res.status(200).json(data[0]);
+}
+
+async function updateTaskComments(req, res) {
+  const { taskid, comments } = req.body;
+  if (!taskid) {
+    return res.status(400).json({ error: "Missing 'taskid' in request body." });
+  }
+
+  if (typeof comments !== "string") {
+    return res.status(400).json({ error: "'comments' must be a string." });
+  }
+  const { data, error } = await supabase.from("checklist").update({ comments: comments }).eq("taskid", taskid).select();
+  if (error) {
+    console.error("Error updating checklist comments:", error.message);
+    return res.status(500).json({ error: error.message });
+  }
+  if (!data || data.length === 0) {
+    return res.status(404).json({ error: `No checklist entry found for taskid: ${taskid}` });
+  }
+  return res.status(200).json({ success: true, updatedData: data });
+}
+
+async function getBlobUrl(req, res) {
+  const { taskid } = req.body;
+  if (!taskid) {
+    return res.status(400).json({ error: "Missing 'taskid' in request body." });
+  }
+  const { data, error } = await supabase.from("checklist_attachments").select("bloburl").eq("taskid", taskid);
+  const url = await generateSasUrl("checklist-attachments", data[0].bloburl)
+  return res.status(200).json(url);
+}
+
+async function updateBlobUrl(taskid, blobUrl) {
+  if (!taskid) {
+    throw new Error("Missing taskid");
+  }
+  if (!blobUrl) {
+    throw new Error("Missing blobUrl");
+  }
+  const { data, error } = await supabase
+    .from("checklist_attachments")
+    .upsert([{ taskid, bloburl: blobUrl }], { onConflict: 'taskid' })
+    .select();
+
+  if (error) {
+    const isFKError = error.message.includes("violates foreign key constraint");
+
+    if (isFKError) {
+      console.error("Foreign key error: taskid does not exist in parent table");
+      return {
+        success: false,
+        error: "No such taskid found in checklist_attachments database.",
+      };
+    }
+    console.error("Error updating blob url:", error.message);
+    return { success: false, error: error.message };
+  }
+  return { success: true, updatedData: data };
+}
+
+async function uploadBlobAzure(req, res) {
+  const form = new formidable.IncomingForm();
+
+  form.parse(req, async (err, fields, files) => {
+    if (err) {
+      console.error("Form parse error:", err);
+      return res.status(400).json({ error: "Invalid form data" });
+    }
+
+
+    const file = Array.isArray(files.image) ? files.image[0] : files.image;
+
+    if (!file || !file.filepath) {
+      return res.status(400).json({ error: "No file uploaded" });
+    }
+
+    try {
+      const containerName = process.env.AZURE_CHECKLIST_ATTACHMENT_CONTAINER;
+      const blobName = `${Date.now()}-${file.originalFilename}`;
+      const blobUrl = await uploadFile(containerName, file, blobName);
+      const rawTaskId = fields.taskid;
+      const taskid = Array.isArray(rawTaskId) ? parseInt(rawTaskId[0]) : parseInt(rawTaskId);
+      await updateBlobUrl(taskid, blobName);
+      res.status(200).json({ blobUrl });
+    } catch (uploadError) {
+      console.error("Upload error:", uploadError.message);
+      res.status(500).json({ error: "Upload failed" });
+    }
+  });
+}
+
+module.exports = { getProjects, getStakeholders, newProject, changeProjectStage, saveProject, processRequest, getScope, generateChecklist, insertChecklistEntries, updateChecklistCompletion, getProjectChecklist, getTaskComments, updateTaskComments, getBlobUrl, updateBlobUrl, uploadBlobAzure };

@@ -1,6 +1,6 @@
 require("dotenv").config();
 const fs = require('fs');
-const { BlobServiceClient, StorageSharedKeyCredential } = require("@azure/storage-blob");
+const { BlobServiceClient, StorageSharedKeyCredential, generateBlobSASQueryParameters, BlobSASPermissions } = require("@azure/storage-blob");
 const { TableClient, AzureNamedKeyCredential } = require("@azure/data-tables");
 
 const AZURE_STORAGE_ACCOUNT = process.env.AZURE_STORAGE_ACCOUNT;
@@ -13,6 +13,7 @@ const blobServiceClient = new BlobServiceClient(
 );
 const tableName = process.env.AZURE_CHECKLIST_ACCOUNT_TABLE_NAME;
 const credential = new AzureNamedKeyCredential(AZURE_STORAGE_ACCOUNT, AZURE_ACCOUNT_KEY);
+const SAScredential = new StorageSharedKeyCredential(AZURE_STORAGE_ACCOUNT, AZURE_ACCOUNT_KEY);
 const tableClient = new TableClient(`https://${AZURE_STORAGE_ACCOUNT}.table.core.windows.net`, tableName, credential);
 
 async function insertChecklist() {
@@ -226,4 +227,26 @@ async function downloadFile(blobUrl) {
     }
 }
 
-module.exports = { uploadFile, downloadFile, getFullChecklist };
+async function generateSasUrl(containerName, blobName) {
+    try {
+        if (!containerName || !blobName) {
+            throw new Error("Missing containerName or blobName.");
+        }
+
+        const sasToken = generateBlobSASQueryParameters({
+            containerName,
+            blobName,
+            permissions: BlobSASPermissions.parse("r"),
+            expiresOn: new Date(new Date().valueOf() + 3600 * 1000)
+        }, SAScredential).toString();
+
+        const sasUrl = `https://${process.env.AZURE_STORAGE_ACCOUNT}.blob.core.windows.net/${containerName}/${blobName}?${sasToken}`;
+        return sasUrl;
+    } catch (err) {
+        console.error("Error generating SAS URL:", err.message);
+        throw new Error("Failed to generate secure blob access link.");
+    }
+
+}
+
+module.exports = { uploadFile, downloadFile, getFullChecklist, generateSasUrl };
