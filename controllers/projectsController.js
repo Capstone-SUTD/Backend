@@ -185,12 +185,13 @@ async function saveProject(req, res) {
     }));
     await supabase.from("scope").insert(scopeData);
 
+    let equip = "300 ton mobile crane"
     // **Filter Equipment that contains "crane"**
     const craneEquipment = scopeArray.find(({ equipment }) =>
-      equipment.toLowerCase().includes("crane")
+      equipment?.toLowerCase().includes("crane")
     );
     if (craneEquipment) {
-      const equipment = craneEquipment.equipment;
+      equip = craneEquipment.equipment;
     }
 
     // Handle VendorMS API Call
@@ -202,7 +203,7 @@ async function saveProject(req, res) {
       const vendorMSForm = new FormData();
       vendorMSForm.append("ms", vendorMSStream, { filename: "vendorMSFile" });
       vendorMSForm.append("scope", "Lifting");
-      vendorMSForm.append("equipment", craneEquipment.equipment ? craneEquipment.equipment : "300 ton mobile crane");
+      vendorMSForm.append("equipment", equip);
 
       // Send the request with form-data
       try {
