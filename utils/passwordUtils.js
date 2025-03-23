@@ -11,4 +11,4 @@ async function comparePassword(enteredPassword, storedHash) {
     return await bcrypt.compare(enteredPassword, storedHash);
 }
 
-module.exports = {hashPassword, comparePassword};
+module.exports = { hashPassword, comparePassword };
