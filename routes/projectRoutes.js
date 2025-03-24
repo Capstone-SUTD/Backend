@@ -1,10 +1,11 @@
 const express = require("express");
 const { verifyToken } = require("../middleware/authMiddleware.js");
-const { getProjects, getStakeholders, newProject, changeProjectStage, saveProject, processRequest, getScope, generateChecklist, insertChecklistEntries, updateChecklistCompletion, getProjectChecklist, updateChecklistComment, getBlobUrl, updateBlobUrl, uploadBlobAzure, updateTaskComment, updateTaskComments, getTaskComments } = require("../controllers/projectsController.js");
+const { equipment, getProjects, getStakeholders, newProject, changeProjectStage, saveProject, processRequest, getScope, generateChecklist, insertChecklistEntries, updateChecklistCompletion, getProjectChecklist, updateChecklistComment, getBlobUrl, updateBlobUrl, uploadBlobAzure, updateTaskComment, updateTaskComments, getTaskComments } = require("../controllers/projectsController.js");
 
 const router = express.Router();
 
 router.get("/list", verifyToken, getProjects);
+router.post("/equipment", verifyToken, equipment);
 router.get("/stakeholders", verifyToken, getStakeholders);
 router.post("/new", verifyToken, newProject);
 router.post("/update-stage", verifyToken, changeProjectStage);

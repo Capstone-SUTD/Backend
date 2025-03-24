@@ -5,7 +5,8 @@ const formidable = require('formidable');
 const fs = require("fs");
 const FormData = require('form-data');
 const streamifier = require('streamifier');
-const { getFullChecklist, uploadFile, generateSasUrl } = require("../utils/azureFiles.js")
+const { getFullChecklist, uploadFile, generateSasUrl } = require("../utils/azureFiles.js");
+const { response } = require("express");
 
 
 // Helper function to get project details from the database
@@ -97,6 +98,22 @@ function categorizeScope(scopes) {
   return "Other";
 }
 
+async function equipment(req, res) {
+  const {width, length, height, weight} = req.body;
+  const requestBody = {
+    "width" : width,
+    "length" : length,
+    "height" : height,
+    "weight" : weight
+  }
+  try{
+    const response = await axios.post('http://127.0.0.1:5000/equipment', requestBody);
+    return res.status(200).json(response.data)
+  } catch (error) {
+    console.error(error.message);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+}
 // Function to process the request and call the external API
 async function processRequest(req, res) {
   const { projectid } = req.body;
@@ -168,12 +185,13 @@ async function saveProject(req, res) {
     }));
     await supabase.from("scope").insert(scopeData);
 
+    let equip = "300 ton mobile crane"
     // **Filter Equipment that contains "crane"**
     const craneEquipment = scopeArray.find(({ equipment }) =>
-      equipment.toLowerCase().includes("crane")
+      equipment?.toLowerCase().includes("crane")
     );
     if (craneEquipment) {
-      const equipment = craneEquipment.equipment;
+      equip = craneEquipment.equipment;
     }
 
     // Handle VendorMS API Call
@@ -185,7 +203,7 @@ async function saveProject(req, res) {
       const vendorMSForm = new FormData();
       vendorMSForm.append("ms", vendorMSStream, { filename: "vendorMSFile" });
       vendorMSForm.append("scope", "Lifting");
-      vendorMSForm.append("equipment", craneEquipment.equipment ? craneEquipment.equipment : "300 ton mobile crane");
+      vendorMSForm.append("equipment", equip);
 
       // Send the request with form-data
       try {
@@ -582,4 +600,4 @@ async function uploadBlobAzure(req, res) {
   });
 }
 
-module.exports = { getProjects, getStakeholders, newProject, changeProjectStage, saveProject, processRequest, getScope, generateChecklist, insertChecklistEntries, updateChecklistCompletion, getProjectChecklist, getTaskComments, updateTaskComments, getBlobUrl, updateBlobUrl, uploadBlobAzure };
+module.exports = { equipment, getProjects, getStakeholders, newProject, changeProjectStage, saveProject, processRequest, getScope, generateChecklist, insertChecklistEntries, updateChecklistCompletion, getProjectChecklist, getTaskComments, updateTaskComments, getBlobUrl, updateBlobUrl, uploadBlobAzure };
