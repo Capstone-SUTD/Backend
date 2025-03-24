@@ -286,10 +286,27 @@ async function getProjects(req, res) {
         supabase.from("scope").select("*").eq("projectid", project.projectid),
       ]);
 
+      // Enrich stakeholders with usernames
+      const enrichedStakeholders = await Promise.all(
+        stakeholders.data.map(async (stakeholder) => {
+          const { data: userData, error: userError } = await supabase
+            .from("users")
+            .select("username, email")
+            .eq("userid", stakeholder.userid)
+            .single();
+
+          if (userError) {
+            return { ...stakeholder, name: "Unknown", email: "Unknown" }; 
+          }
+
+          return { ...stakeholder, name: userData.username, email: userData.email };
+        })
+      );
+
       return {
         ...project,
         projectStatus: project.stage === "buyer" ? "Completed" : "In Progress",
-        stakeholders: stakeholders.data || [],
+        stakeholders: enrichedStakeholders,
         cargo: cargo.data || [],
         scope: scope.data || [],
       };
