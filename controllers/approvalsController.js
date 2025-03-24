@@ -3,10 +3,10 @@ const formidable = require('formidable');
 const { uploadFile, downloadFile } = require("../utils/azureFiles");
 
 async function approveFile(req, res) {
-    const { projectid, filetype } = req.body;
+    const { projectid } = req.body;
     const userid = req.user.id;
 
-    if (!projectid || !filetype ) {
+    if (!projectid ) {
         return res.status(400).json({ error: "All fields are required" });
     }
 
@@ -21,7 +21,6 @@ async function approveFile(req, res) {
     const { data, error : userError } = await supabase
     .from("approvals")
     .select("*")
-    .eq("filetype", filetype)
     .eq("projectid", projectid)
     .eq("status", "Approved");
     if (userError) return res.status(500).json({ error: error.message });
@@ -35,27 +34,24 @@ async function approveFile(req, res) {
         return res.status(403).json({ error: "Only Operations Manager can proceed" });
     }
     if (approvedCount === 2 && userRole !== "ProjectManager") {
-        return res.status(403).json({ error: "Only Operations Manager can proceed" });
-    }
-    if (approvedCount === 3 && userRole !== "Head") {
-        return res.status(403).json({ error: "Only Mr. Jeong can proceed" });
+        return res.status(403).json({ error: "Only Project Manager can proceed" });
     }
     
     const { data: _ , error } = await supabase
         .from("approvals")
-        .insert([{ projectid, userid, filetype, status : "Approved" }])
+        .insert([{ projectid, userid, status : "Approved" }])
         .select();
 
     if (error) return res.status(500).json({ error: error.message });
 
-    res.status(201).json({ message: "Approved Successfully" });
+    res.status(200).json({ message: "Approved Successfully" });
 }
 
 async function rejectFile(req, res) {
-    const { projectid, filetype, comments } = req.body;
+    const { projectid, comments } = req.body;
     const userid = req.user.id;
 
-    if (!projectid || !filetype ) {
+    if (!projectid ) {
         return res.status(400).json({ error: "All fields are required" });
     }
 
@@ -70,7 +66,6 @@ async function rejectFile(req, res) {
     const { data, error : userError } = await supabase
     .from("approvals")
     .select("*")
-    .eq("filetype", filetype)
     .eq("projectid", projectid)
     .eq("status", "Approved");
     if (userError) return res.status(500).json({ error: error.message });
@@ -84,20 +79,17 @@ async function rejectFile(req, res) {
         return res.status(403).json({ error: "Only Operations Manager can proceed" });
     }
     if (approvedCount === 2 && userRole !== "ProjectManager") {
-        return res.status(403).json({ error: "Only Operations Manager can proceed" });
-    }
-    if (approvedCount === 3 && userRole !== "Head") {
-        return res.status(403).json({ error: "Only Mr. Jeong can proceed" });
+        return res.status(403).json({ error: "Only Project Manager can proceed" });
     }
 
     const { data : _ , error } = await supabase
         .from("approvals")
-        .insert([{ projectid, userid, filetype, status : "Rejected", comments }])
+        .insert([{ projectid, userid, status : "Rejected", comments }])
         .select();
 
     if (error) return res.status(500).json({ error: error.message });
 
-    res.status(201).json({ message: "Rejected Successfully" });
+    res.status(200).json({ message: "Rejected Successfully" });
 }
 
 function getFileExtension(fileName) {
@@ -121,7 +113,7 @@ async function uploadNew (req, res) {
             return res.status(400).json({ error: "All fields are required" });
         }
 
-        const fileTypeString = Array.isArray(filetype) ? filetype[0] : filetype; // Get first element of the array if filetype is an array
+        const fileTypeString = Array.isArray(filetype) ? filetype[0] : filetype;
         const projectIdInt = parseInt(projectid[0], 10); 
 
         var container = ""
@@ -187,8 +179,8 @@ async function download (req, res) {
     return stream.pipe(res);
 }
 
-async function getRejectionDetails(filetype, projectid, rejectedData) {
-    const filteredRejections = rejectedData.filter(record => record.filetype === filetype);
+async function getRejectionDetails(projectid, rejectedData) {
+    const filteredRejections = rejectedData;
     const userIds = filteredRejections.map(record => record.userid);
     let rejectionDetails = [];
 
@@ -207,15 +199,27 @@ async function getRejectionDetails(filetype, projectid, rejectedData) {
         });
     }
 
-    const { data: files, error: fileError } = await supabase
-        .from("files")
-        .select("*")
-        .eq("projectid", projectid)
-        .eq("filetype", filetype);
+    const { data: msFiles, error: msError } = await supabase
+    .from("files")
+    .select("*")
+    .eq("projectid", projectid)
+    .eq("filetype", "MS");
 
-    if (fileError) return { error: fileError.message };
+    const { data: raFiles, error: raError } = await supabase
+    .from("files")
+    .select("*")
+    .eq("projectid", projectid)
+    .eq("filetype", "RA");
 
-    return { count: filteredRejections.length, rejectionDetails, versions: files?.length || 0 };
+    if (msError) return { error: msError.message };
+    if (raError) return { error: raError.message };
+
+    return { 
+    count: filteredRejections.length, 
+    rejectionDetails, 
+    MSVersions: msFiles?.length || 0, 
+    RAVersions: raFiles?.length || 0 
+    };
 }
 
 async function showApprovalandRejections(req, res) {
@@ -227,37 +231,31 @@ async function showApprovalandRejections(req, res) {
 
     const { data: approvedData, error: approvalError } = await supabase
         .from("approvals")
-        .select("filetype")
+        .select("*")
         .eq("projectid", projectid)
         .eq("status", "Approved");
 
     if (approvalError) return res.status(500).json({ error: approvalError.message });
 
-    const msApprovedCount = approvedData.filter(record => record.filetype === "MS").length;
-    const raApprovedCount = approvedData.filter(record => record.filetype === "RA").length;
+    const ApprovedCount = approvedData.length;
 
     const { data: rejectedData, error: rejectionError } = await supabase
         .from("approvals")
-        .select("filetype, userid, comments")
+        .select("userid, comments")
         .eq("projectid", projectid)
         .eq("status", "Rejected");
 
     if (rejectionError) return res.status(500).json({ error: rejectionError.message });
 
-    const msDetails = await getRejectionDetails("MS", projectid, rejectedData);
-    const raDetails = await getRejectionDetails("RA", projectid, rejectedData);
+    const Details = await getRejectionDetails(projectid, rejectedData);
 
-    console.log(raDetails);
 
-    res.status(201).json({
-        msApprovals: msApprovedCount,
-        raApprovals: raApprovedCount,
-        msRevisions: msDetails.versions,
-        msRejections: msDetails.count,
-        msRejectionDetails: msDetails.rejectionDetails,
-        raRevisions: raDetails.versions,
-        raRejections: raDetails.count,
-        raRejectionDetails: raDetails.rejectionDetails
+    res.status(200).json({
+        Approvals: ApprovedCount,
+        Rejections: Details.count,
+        RejectionDetails: Details.rejectionDetails,
+        MSVersions: Details.MSVersions,
+        RAVersions: Details.RAVersions
     });
 }
 
