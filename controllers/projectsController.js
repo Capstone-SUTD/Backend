@@ -185,7 +185,7 @@ async function saveProject(req, res) {
     }));
     await supabase.from("scope").insert(scopeData);
 
-    let equip = "300 ton mobile crane"
+    let equip = "300 ton crane"
     // **Filter Equipment that contains "crane"**
     const craneEquipment = scopeArray.find(({ equipment }) =>
       equipment?.toLowerCase().includes("crane")
