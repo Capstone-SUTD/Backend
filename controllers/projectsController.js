@@ -372,37 +372,27 @@ async function changeProjectStage(req, res) {
 
 }
 //helper function
-async function getScope(req, res) {
-  try {
-    const { projectid } = req.body;
-
-    if (!projectid) {
-      return res.status(400).json({ error: "Project ID is required" });
-    }
-
-    const { data, error } = await supabase
-      .from("scope")
-      .select("work")
-      .eq("projectid", projectid);
-
-    if (error) {
-      console.error("Error fetching scope:", error);
-      return res.status(500).json({ error: error.message });
-    }
-    const scopeArr = [];
-
-    data.forEach(obj => {
-      if (obj.work == "Lifting" || obj.work == "Transportation" || obj.work == "Forklift") {
-        scopeArr.push(obj["work"]);
-      }
-    })
-    res.json(scopeArr)
-    return scopeArr
-  } catch (err) {
-    console.error("Unexpected error:", err);
-    res.status(500).json({ error: "Internal server error" });
+async function getScope(projectid) {
+  if (!projectid) {
+    throw new Error("Project ID is required");
   }
+
+  const { data, error } = await supabase
+    .from("scope")
+    .select("work")
+    .eq("projectid", projectid);
+
+  if (error) {
+    throw new Error("Error fetching scope: " + error.message);
+  }
+
+  return data
+    .filter(obj =>
+      ["Lifting", "Transportation", "Forklift"].includes(obj.work)
+    )
+    .map(obj => obj.work);
 }
+
 async function insertChecklistEntries(checklist_obj) {
   const { data, error } = await supabase
     .from("checklist")
@@ -425,7 +415,7 @@ async function generateChecklist(req, res) {
   // get the full checklist from azure 
   const fullChecklist = await getFullChecklist();
   //get scope
-  const scopeArr = await getScope(req, res);
+  const scopeArr = await getScope(projectid);
   // console.log(scopeArr)
   const filteredChecklist = {}
   filteredChecklist.OffSiteFixed = fullChecklist["OffSiteFixed"]
@@ -495,7 +485,7 @@ async function getProjectChecklist(req, res) {
       .from("checklist")
       .select("taskid, type, subtype, completed, comments")
       .eq("projectid", projectid)
-
+    console.log(data)
     let uniqueScopes;
     if (error) {
       console.error("Error fetching checklist types:", error.message);
@@ -509,7 +499,7 @@ async function getProjectChecklist(req, res) {
       filteredChecklist[scope] = fullChecklist[scope]
     })
     for (const checklistItem of data) {
-      const { type, subtype, completed, comments } = checklistItem;
+      const { taskid, type, subtype, completed, comments } = checklistItem;
       if (filteredChecklist[type] && filteredChecklist[type][subtype]) {
         filteredChecklist[type][subtype] = { ...filteredChecklist[type][subtype], taskid, completed, comments };
       }

@@ -38,9 +38,11 @@ async function loginUser(req, res) {
     if (error || !data) return res.status(401).json({ error: "Invalid credentials" });
 
     const isMatch = await comparePassword(password, data.password);
+    console.log("Invalid Creds");
     if (!isMatch) return res.status(401).json({ error: "Invalid credentials" });
 
     const token = generateToken(data);
+    console.log("Success");
     res.json({ message: "Login successful", token });
 }
 
