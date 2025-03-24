@@ -277,7 +277,26 @@ async function getProjects(req, res) {
     return res.status(500).json({ error: "Error fetching project data" });
   }
 
-  res.json(projects);
+  // Fetch stakeholders, cargo, and scope for each project
+  const enrichedProjects = await Promise.all(
+    projects.map(async (project) => {
+      const [stakeholders, cargo, scope] = await Promise.all([
+        supabase.from("stakeholders").select("*").eq("projectid", project.projectid),
+        supabase.from("cargo").select("*").eq("projectid", project.projectid),
+        supabase.from("scope").select("*").eq("projectid", project.projectid),
+      ]);
+
+      return {
+        ...project,
+        projectStatus: project.stage === "buyer" ? "Completed" : "In Progress",
+        stakeholders: stakeholders.data || [],
+        cargo: cargo.data || [],
+        scope: scope.data || [],
+      };
+    })
+  );
+
+  res.json(enrichedProjects);
 }
 
 async function getStakeholders(req, res) {
@@ -306,7 +325,7 @@ async function newProject(req, res) {
 
   const stakeholderEntries = stakeholders.map(s => ({
     projectid,
-    userid: s.userid,
+    userid: s.userId,
     role: s.role
   }));
   await supabase.from("stakeholders").insert(stakeholderEntries);
