@@ -512,7 +512,7 @@ async function getProjectChecklist(req, res) {
 }
 
 async function getTaskComments(req, res) {
-  const { taskid } = req.body;
+  const { taskid } = req.query;
 
   if (!taskid) {
     return res.status(400).json({ error: "Missing taskid" });
@@ -551,7 +551,7 @@ async function updateTaskComments(req, res) {
 }
 
 async function getBlobUrl(req, res) {
-  const { taskid } = req.body;
+  const { taskid } = req.query;
   if (!taskid) {
     return res.status(400).json({ error: "Missing 'taskid' in request body." });
   }
