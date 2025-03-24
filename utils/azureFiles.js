@@ -204,12 +204,14 @@ async function downloadFile(blobUrl) {
             throw new Error("Invalid Blob URL");
         }
 
-        const containerName = pathParts[0];
-        const blobName = pathParts.slice(1).join("/");
+        const containerName = pathParts[0]; 
+        const blobName = pathParts.slice(1).join("/"); 
 
         const containerClient = blobServiceClient.getContainerClient(containerName);
-        const blobClient = containerClient.getBlobClient(blobName);
+        const decodedBlobName = decodeURIComponent(blobName);
+        const blobClient = containerClient.getBlobClient(decodedBlobName);
 
+        console.log(containerClient, blobClient);
         const blobExists = await blobClient.exists();
         if (!blobExists) {
             throw new Error("Blob does not exist");
@@ -220,7 +222,7 @@ async function downloadFile(blobUrl) {
         return {
             stream: downloadResponse.readableStreamBody,
             contentType: downloadResponse.contentType || "application/octet-stream",
-            filename: blobName
+            filename : blobName
         };
     } catch (error) {
         throw new Error("Failed to download file");
