@@ -461,7 +461,7 @@ async function updateChecklistCompletion(req, res) {
 async function getProjectChecklist(req, res) {
   const fullChecklist = await getFullChecklist();
   try {
-    const { projectid } = req.body;
+    const { projectid } = req.query;
     const { data, error } = await supabase
       .from("checklist")
       .select("taskid, type, subtype, completed, comments")
