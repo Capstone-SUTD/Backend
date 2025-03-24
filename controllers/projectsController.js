@@ -153,8 +153,8 @@ async function saveProject(req, res) {
     }
 
     const { projectid, scope } = fields;
-    const VendorMS = files.VendorMS[0];
-    const VendorRA = files.VendorRA[0];
+    const VendorMS = files?.VendorMS;
+    const VendorRA = files?.VendorRA;
 
     if (!projectid || !scope) {
       return res.status(400).json({ error: "Invalid request format" });
@@ -196,7 +196,7 @@ async function saveProject(req, res) {
 
     // Handle VendorMS API Call
     if (VendorMS) {
-      const vendorMSPath = VendorMS.filepath;
+      const vendorMSPath = VendorMS[0].filepath;
       const vendorMSStream = fs.createReadStream(vendorMSPath);
 
       // Prepare form-data for VendorMS
@@ -221,7 +221,7 @@ async function saveProject(req, res) {
 
     // Handle VendorRA API Call
     if (VendorRA) {
-      const vendorRAPath = VendorRA.filepath;
+      const vendorRAPath = VendorRA[0].filepath;
       const vendorRABuffer = fs.readFileSync(vendorRAPath);
       const vendorRAStream = streamifier.createReadStream(vendorRABuffer);
 
@@ -280,6 +280,19 @@ async function getProjects(req, res) {
   // Fetch stakeholders, cargo, and scope for each project
   const enrichedProjects = await Promise.all(
     projects.map(async (project) => {
+      // Check if there are files for the current project
+      const { data: filesData, error: filesError } = await supabase
+        .from("files")
+        .select("projectid")
+        .eq("projectid", project.projectid);
+
+      if (filesError) {
+        return res.status(500).json({ error: "Error fetching files data" });
+      }
+
+      // Determine the MSRA value
+      const MSRA = filesData.length > 0; // Set to true if there are any files
+
       const [stakeholders, cargo, scope] = await Promise.all([
         supabase.from("stakeholders").select("*").eq("projectid", project.projectid),
         supabase.from("cargo").select("*").eq("projectid", project.projectid),
@@ -306,6 +319,7 @@ async function getProjects(req, res) {
       return {
         ...project,
         projectStatus: project.stage === "buyer" ? "Completed" : "In Progress",
+        MSRA: MSRA, 
         stakeholders: enrichedStakeholders,
         cargo: cargo.data || [],
         scope: scope.data || [],
