@@ -330,7 +330,7 @@ async function newProject(req, res) {
   }));
   await supabase.from("stakeholders").insert(stakeholderEntries);
 
-  const threshold = { weight: 4000, length: 3, breadth: 3, height: 1 };
+  const threshold = { weight: 4000, length: 3, breadth: 3, height: 2 };
 
   const cargoEntries = cargo.map(item => ({
     projectid,
