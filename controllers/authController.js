@@ -17,11 +17,11 @@ async function registerUser(req, res) {
         return res.status(400).json({ error: "All fields are required" });
     }
 
-    const hashedPassword = await hashPassword(password);
+    // const hashedPassword = await hashPassword(password);
 
     const { data, error } = await supabase
         .from("users")
-        .insert([{ username, email, password: hashedPassword }])
+        .insert([{ username, email, password }])
         .select();
 
     if (error) return res.status(500).json({ error: error.message });
@@ -37,7 +37,7 @@ async function loginUser(req, res) {
 
     if (error || !data) return res.status(401).json({ error: "Invalid credentials" });
 
-    const isMatch = await comparePassword(password, data.password);
+    const isMatch = password === data.password;
     console.log("Invalid Creds");
     if (!isMatch) return res.status(401).json({ error: "Invalid credentials" });
 
