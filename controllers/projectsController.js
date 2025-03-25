@@ -99,14 +99,14 @@ function categorizeScope(scopes) {
 }
 
 async function equipment(req, res) {
-  const {width, length, height, weight} = req.body;
+  const { width, length, height, weight } = req.body;
   const requestBody = {
-    "width" : width,
-    "length" : length,
-    "height" : height,
-    "weight" : weight
+    "width": width,
+    "length": length,
+    "height": height,
+    "weight": weight
   }
-  try{
+  try {
     const response = await axios.post('http://127.0.0.1:5000/equipment', requestBody);
     return res.status(200).json(response.data)
   } catch (error) {
@@ -309,7 +309,7 @@ async function getProjects(req, res) {
             .single();
 
           if (userError) {
-            return { ...stakeholder, name: "Unknown", email: "Unknown" }; 
+            return { ...stakeholder, name: "Unknown", email: "Unknown" };
           }
 
           return { ...stakeholder, name: userData.username, email: userData.email };
@@ -319,7 +319,7 @@ async function getProjects(req, res) {
       return {
         ...project,
         projectStatus: project.stage === "buyer" ? "Completed" : "In Progress",
-        MSRA: MSRA, 
+        MSRA: MSRA,
         stakeholders: enrichedStakeholders,
         cargo: cargo.data || [],
         scope: scope.data || [],
@@ -457,7 +457,7 @@ async function generateChecklist(req, res) {
   const checklist_obj = []
   for (let key in filteredChecklist) {
     for (let subkey in filteredChecklist[key]) {
-      checklist_obj.push({ completed: false, type: key, subtype: subkey, projectid: projectid })
+      checklist_obj.push({ completed: false, type: key, subtype: subkey, projectid: projectid, has_attachment: false });
     }
   }
   const insertResult = await insertChecklistEntries(checklist_obj);
@@ -512,11 +512,16 @@ async function getProjectChecklist(req, res) {
   const fullChecklist = await getFullChecklist();
   try {
     const { projectid } = req.query;
+    if (!projectid) {
+      return res.status(400).json({ error: "Missing 'projectid' in query." });
+    }
     const { data, error } = await supabase
       .from("checklist")
-      .select("taskid, type, subtype, completed, comments")
+      .select("taskid, type, subtype, completed, comments,has_attachment")
       .eq("projectid", projectid)
-    console.log(data)
+    if (error || !data || data.length === 0) {
+      res.status(404).json({ error: "No checklist found" });
+    }
     let uniqueScopes;
     if (error) {
       console.error("Error fetching checklist types:", error.message);
@@ -530,9 +535,10 @@ async function getProjectChecklist(req, res) {
       filteredChecklist[scope] = fullChecklist[scope]
     })
     for (const checklistItem of data) {
-      const { taskid, type, subtype, completed, comments } = checklistItem;
+      const { taskid, type, subtype, completed, comments, has_attachment } = checklistItem;
+      console.log(checklistItem);
       if (filteredChecklist[type] && filteredChecklist[type][subtype]) {
-        filteredChecklist[type][subtype] = { ...filteredChecklist[type][subtype], taskid, completed, comments };
+        filteredChecklist[type][subtype] = { ...filteredChecklist[type][subtype], taskid, completed, comments, has_attachment };
       }
     }
     res.json(filteredChecklist);
@@ -587,6 +593,9 @@ async function getBlobUrl(req, res) {
     return res.status(400).json({ error: "Missing 'taskid' in request body." });
   }
   const { data, error } = await supabase.from("checklist_attachments").select("bloburl").eq("taskid", taskid);
+  if (error || !data || data.length === 0) {
+    return res.status(200).json(null);
+  }
   const url = await generateSasUrl("checklist-attachments", data[0].bloburl)
   return res.status(200).json(url);
 }
@@ -595,29 +604,64 @@ async function updateBlobUrl(taskid, blobUrl) {
   if (!taskid) {
     throw new Error("Missing taskid");
   }
+
   if (!blobUrl) {
     throw new Error("Missing blobUrl");
   }
-  const { data, error } = await supabase
-    .from("checklist_attachments")
-    .upsert([{ taskid, bloburl: blobUrl }], { onConflict: 'taskid' })
-    .select();
 
-  if (error) {
-    const isFKError = error.message.includes("violates foreign key constraint");
+  try {
+    const { data: blobData, error: blobError } = await supabase
+      .from("checklist_attachments")
+      .upsert([{ taskid, bloburl: blobUrl }], { onConflict: 'taskid' })
+      .select();
 
-    if (isFKError) {
-      console.error("Foreign key error: taskid does not exist in parent table");
+    if (blobError) {
+      const isFKError = blobError.message.includes("violates foreign key constraint");
+      if (isFKError) {
+        console.error("Foreign key constraint violation:", blobError.message);
+        return {
+          success: false,
+          error: "Invalid taskid – does not exist in checklist table.",
+        };
+      }
+
+      console.error("Error during blob URL upsert:", blobError.message);
       return {
         success: false,
-        error: "No such taskid found in checklist_attachments database.",
+        error: blobError.message,
       };
     }
-    console.error("Error updating blob url:", error.message);
-    return { success: false, error: error.message };
+
+    const { data: updateData, error: updateError } = await supabase
+      .from("checklist")
+      .update({ has_attachment: true })
+      .eq("taskid", taskid);
+
+    if (updateError) {
+      console.error("Error updating checklist record:", updateError.message);
+      return {
+        success: false,
+        error: updateError.message,
+        blobData, // partial success info
+      };
+    }
+
+    // 3. Success!
+    return {
+      success: true,
+      blobData,
+      checklistUpdate: updateData,
+    };
+
+  } catch (err) {
+    console.error("Unexpected exception in updateBlobUrl:", err.message);
+    return {
+      success: false,
+      error: "Unexpected error occurred. Please try again.",
+    };
   }
-  return { success: true, updatedData: data };
 }
+
 
 async function uploadBlobAzure(req, res) {
   const form = new formidable.IncomingForm();
