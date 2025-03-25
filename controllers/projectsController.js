@@ -261,7 +261,7 @@ async function getProjects(req, res) {
   }
 
   if (!stakeholderData.length) {
-    return res.status(404).json({ error: "No projects found for this user" });
+    return res.status(200).json({ error: "No projects found for this user" });
   }
 
   // Extract project IDs
