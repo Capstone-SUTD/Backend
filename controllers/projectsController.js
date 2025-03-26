@@ -517,7 +517,7 @@ async function getProjectChecklist(req, res) {
     }
     const { data, error } = await supabase
       .from("checklist")
-      .select("taskid, type, subtype, completed, comments,has_attachment")
+      .select("taskid, type, subtype, completed, has_comments,has_attachment")
       .eq("projectid", projectid)
     if (error || !data || data.length === 0) {
       res.status(404).json({ error: "No checklist found" });
@@ -538,7 +538,7 @@ async function getProjectChecklist(req, res) {
       const { taskid, type, subtype, completed, comments, has_attachment } = checklistItem;
       console.log(checklistItem);
       if (filteredChecklist[type] && filteredChecklist[type][subtype]) {
-        filteredChecklist[type][subtype] = { ...filteredChecklist[type][subtype], taskid, completed, comments, has_attachment };
+        filteredChecklist[type][subtype] = { ...filteredChecklist[type][subtype], taskid, completed, has_comments, has_attachment };
       }
     }
     res.json(filteredChecklist);
@@ -650,7 +650,7 @@ async function updateTaskComments(req, res) {
   }
 }
 async function deleteTaskComments(req, res) {
-  const { commentid } = req.query;
+  const { commentid, taskid } = req.query;
   const { data, error } = await supabase.from("checklist_comments").select("userid").eq("commentid", commentid);
 
   if (data[0]["userid"]) {
@@ -670,6 +670,26 @@ async function deleteTaskComments(req, res) {
 
     if (!data || data.length === 0) {
       return res.status(404).json({ error: "Comment not found" });
+    }
+    //check if there are any remaining comments for a particular task
+    const { data: projData, error: projError } = await supabase.from("checklist_comments").select("commentid").eq("taskid", taskid)
+    if (projError) {
+      console.error("Error querying checklist:", projError.message);
+      return res.status(500).json({ error: "Failed to query checklist" });
+    }
+    console.log(projData)
+
+    if (!projData || projData.length === 0) {
+      const { data: noCommentUpdateData, error: noCommentUpdateError } = await supabase
+        .from("checklist")
+        .update({ has_comments: false })
+        .eq("taskid", taskid)
+        .select("*");
+
+      if (noCommentUpdateError) {
+        console.error("Error updating has_comments:", noCommentUpdateError.message);
+        return res.status(500).json({ error: "Failed to update has_comments" });
+      }
     }
 
     return res.status(200).json({ success: true, deleted: data });
