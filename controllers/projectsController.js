@@ -654,13 +654,16 @@ async function deleteTaskComments(req, res) {
   const { commentid, taskid } = req.query;
   const { data, error } = await supabase.from("checklist_comments").select("userid").eq("commentid", commentid);
 
-  if (data[0]["userid"]) {
+  if (data[0] && data[0]["userid"]) {
     if (data[0]["userid"] != req.user.id) {
       return res.status(403).json({ error: "Forbidden: You are not the owner of this comment." });
     }
   }
   if (!commentid) {
     return res.status(400).json({ error: "Missing 'taskid' in request query." });
+  }
+  if (!data[0]) {
+    return res.status(400).json({ error: "No comment with commentid" });
   }
   try {
     const { data, error } = await supabase.from("checklist_comments").delete().eq("commentid", commentid).select("*")
