@@ -519,6 +519,7 @@ async function getProjectChecklist(req, res) {
       .from("checklist")
       .select("taskid, type, subtype, completed, has_comments,has_attachment")
       .eq("projectid", projectid)
+    console.log(`data:${JSON.stringify(data)}`)
     if (error || !data || data.length === 0) {
       res.status(404).json({ error: "No checklist found" });
     }
@@ -535,7 +536,7 @@ async function getProjectChecklist(req, res) {
       filteredChecklist[scope] = fullChecklist[scope]
     })
     for (const checklistItem of data) {
-      const { taskid, type, subtype, completed, comments, has_attachment } = checklistItem;
+      const { taskid, type, subtype, completed, has_comments, has_attachment } = checklistItem;
       console.log(checklistItem);
       if (filteredChecklist[type] && filteredChecklist[type][subtype]) {
         filteredChecklist[type][subtype] = { ...filteredChecklist[type][subtype], taskid, completed, has_comments, has_attachment };
