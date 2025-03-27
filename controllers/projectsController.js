@@ -192,10 +192,12 @@ async function saveProject(req, res) {
     );
     if (craneEquipment) {
       equip = craneEquipment.equipment;
+    } else {
+      equip = "";
     }
 
     // Handle VendorMS API Call
-    if (VendorMS) {
+    if (VendorMS && equip) {
       const vendorMSPath = VendorMS[0].filepath;
       const vendorMSStream = fs.createReadStream(vendorMSPath);
 
@@ -361,7 +363,7 @@ async function newProject(req, res) {
   }));
   await supabase.from("stakeholders").insert(stakeholderEntries);
 
-  const threshold = { weight: 4000, length: 3, breadth: 3, height: 2 };
+  const threshold = { weight: 30480, length: 12.03, breadth: 2.35, height: 2.39 };
 
   const cargoEntries = cargo.map(item => ({
     projectid,
