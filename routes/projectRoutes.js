@@ -1,7 +1,6 @@
 const express = require("express");
 const { verifyToken } = require("../middleware/authMiddleware.js");
-const { equipment, getProjects, getStakeholders, newProject, changeProjectStage, saveProject, processRequest, getScope, generateChecklist, insertChecklistEntries, updateChecklistCompletion, getProjectChecklist, getBlobUrl, updateBlobUrl, uploadBlobAzure, updateTaskComments, getTaskComments, addTaskComments, deleteTaskComments } = require("../controllers/projectsController.js");
-const { verify } = require("jsonwebtoken");
+const { submitFeedback, stakeholderComments, equipment, getProjects, getStakeholders, newProject, changeProjectStage, saveProject, processRequest, getScope, generateChecklist, insertChecklistEntries, updateChecklistCompletion, getProjectChecklist, getBlobUrl, updateBlobUrl, uploadBlobAzure, updateTaskComments, getTaskComments, addTaskComments, deleteTaskComments } = require("../controllers/projectsController.js");
 
 const router = express.Router();
 
@@ -24,5 +23,7 @@ router.get("/get-blob-url", verifyToken, getBlobUrl)
 router.post("/update-blob-url", verifyToken, updateBlobUrl)
 router.post("/upload-blob-azure", verifyToken, uploadBlobAzure)
 router.delete("/delete-task-comment",verifyToken,deleteTaskComments)
+router.post("/stakeholder-comments", verifyToken, stakeholderComments)
+router.post("/feedback", verifyToken, submitFeedback)
 
 module.exports = router;

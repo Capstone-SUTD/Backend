@@ -320,7 +320,7 @@ async function getProjects(req, res) {
 
       return {
         ...project,
-        projectStatus: project.stage === "buyer" ? "Completed" : "In Progress",
+        projectStatus: project.stage === "Project Completion" ? "Completed" : "In Progress",
         MSRA: MSRA,
         stakeholders: enrichedStakeholders,
         cargo: cargo.data || [],
@@ -332,10 +332,89 @@ async function getProjects(req, res) {
   res.json(enrichedProjects);
 }
 
+async function submitFeedback(req,res) {
+  const { projectid, comments, role } = req.body;
+  const userid = req.user.id;
+
+  if (!projectid ) {
+    return res.status(400).json({ error: "All fields are required" });
+  }
+
+  const { data, error : userError } = await supabase
+    .from("stakeholders")
+    .select("*")
+    .eq("projectid", projectid)
+    .eq('userid', userid);
+    if (userError) return res.status(500).json({ error: error.message });
+  
+    if (data[0].role !== role) {
+        return res.status(403).json({ error: `Only ${role} can submit feedback here` });
+    }
+
+    const { newdata, error } = await supabase
+    .from("stakeholders")
+    .update({ comments: comments })  // Update the comments
+    .eq("projectid", projectid)      // Match the projectid
+    .eq("userid", userid)            // Match the userid
+    .select(); 
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    res.status(200).json({ message: "Submitted Successfully" });
+
+}
+
+async function stakeholderComments(req, res) {
+  const { projectid } = req.body;
+  if (!projectid) {
+    return res.status(400).json({ error: "All fields are required" });
+  }
+
+  // Fetch stakeholders' user IDs and comments
+  const { data: stakeholders, error: stakeholderError } = await supabase
+    .from("stakeholders")
+    .select("userid, comments, role")
+    .eq("projectid", projectid);
+
+  if (stakeholderError) {
+    return res.status(500).json({ error: "Error fetching stakeholders" });
+  }
+
+  if (stakeholders.length === 0) {
+    return res.json([]); // Return an empty list if no stakeholders are found
+  }
+
+  // Extract unique user IDs
+  const userIds = stakeholders.map(s => s.userid);
+
+  // Fetch user details for those user IDs
+  const { data: users, error: userError } = await supabase
+    .from("users")
+    .select("userid, username")
+    .in("userid", userIds);
+
+  if (userError) {
+    return res.status(500).json({ error: "Error fetching user data" });
+  }
+
+  // Map user data to a dictionary for quick lookup
+  const userMap = Object.fromEntries(users.map(user => [user.userid, user.username])); // Ensure the key is 'userid'
+
+  // Format final response
+  const formattedData = stakeholders.map(s => ({
+    userid: s.userid,
+    role: s.role,
+    name: userMap[s.userid] || "Unknown", // Default to "Unknown" if user is not found
+    comments: s.comments ?? "",
+  }));
+
+  res.json(formattedData);
+}
+
 async function getStakeholders(req, res) {
   const { data, error } = await supabase
     .from("users")
-    .select("userid, username");
+    .select("userid, username", "comments");
 
   if (error) {
     return res.status(500).json({ error: "Error fetching data" })
@@ -813,4 +892,4 @@ async function uploadBlobAzure(req, res) {
   });
 }
 
-module.exports = { equipment, getProjects, getStakeholders, newProject, changeProjectStage, saveProject, processRequest, getScope, generateChecklist, insertChecklistEntries, updateChecklistCompletion, getProjectChecklist, getTaskComments, addTaskComments, updateTaskComments, deleteTaskComments, getBlobUrl, updateBlobUrl, uploadBlobAzure };
+module.exports = { submitFeedback, stakeholderComments, equipment, getProjects, getStakeholders, newProject, changeProjectStage, saveProject, processRequest, getScope, generateChecklist, insertChecklistEntries, updateChecklistCompletion, getProjectChecklist, getTaskComments, addTaskComments, updateTaskComments, deleteTaskComments, getBlobUrl, updateBlobUrl, uploadBlobAzure };
