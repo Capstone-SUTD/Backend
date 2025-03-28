@@ -99,14 +99,14 @@ function categorizeScope(scopes) {
 }
 
 async function equipment(req, res) {
-  const {width, length, height, weight} = req.body;
+  const { width, length, height, weight } = req.body;
   const requestBody = {
-    "width" : width,
-    "length" : length,
-    "height" : height,
-    "weight" : weight
+    "width": width,
+    "length": length,
+    "height": height,
+    "weight": weight
   }
-  try{
+  try {
     const response = await axios.post('http://127.0.0.1:5000/equipment', requestBody);
     return res.status(200).json(response.data)
   } catch (error) {
@@ -311,7 +311,7 @@ async function getProjects(req, res) {
             .single();
 
           if (userError) {
-            return { ...stakeholder, name: "Unknown", email: "Unknown" }; 
+            return { ...stakeholder, name: "Unknown", email: "Unknown" };
           }
 
           return { ...stakeholder, name: userData.username, email: userData.email };
@@ -321,7 +321,7 @@ async function getProjects(req, res) {
       return {
         ...project,
         projectStatus: project.stage === "buyer" ? "Completed" : "In Progress",
-        MSRA: MSRA, 
+        MSRA: MSRA,
         stakeholders: enrichedStakeholders,
         cargo: cargo.data || [],
         scope: scope.data || [],
@@ -460,7 +460,7 @@ async function generateChecklist(req, res) {
   const checklist_obj = []
   for (let key in filteredChecklist) {
     for (let subkey in filteredChecklist[key]) {
-      checklist_obj.push({ completed: false, type: key, subtype: subkey, projectid: projectid })
+      checklist_obj.push({ projectid: projectid, has_comments: false, type: key, completed: false, subtype: subkey, has_attachment: false });
     }
   }
   const insertResult = await insertChecklistEntries(checklist_obj);
@@ -515,11 +515,17 @@ async function getProjectChecklist(req, res) {
   const fullChecklist = await getFullChecklist();
   try {
     const { projectid } = req.query;
+    if (!projectid) {
+      return res.status(400).json({ error: "Missing 'projectid' in query." });
+    }
     const { data, error } = await supabase
       .from("checklist")
-      .select("taskid, type, subtype, completed, comments")
+      .select("taskid, type, subtype, completed, has_comments,has_attachment")
       .eq("projectid", projectid)
-    console.log(data)
+    console.log(`data:${JSON.stringify(data)}`)
+    if (error || !data || data.length === 0) {
+      res.status(404).json({ error: "No checklist found" });
+    }
     let uniqueScopes;
     if (error) {
       console.error("Error fetching checklist types:", error.message);
@@ -533,9 +539,10 @@ async function getProjectChecklist(req, res) {
       filteredChecklist[scope] = fullChecklist[scope]
     })
     for (const checklistItem of data) {
-      const { taskid, type, subtype, completed, comments } = checklistItem;
+      const { taskid, type, subtype, completed, has_comments, has_attachment } = checklistItem;
+      console.log(checklistItem);
       if (filteredChecklist[type] && filteredChecklist[type][subtype]) {
-        filteredChecklist[type][subtype] = { ...filteredChecklist[type][subtype], taskid, completed, comments };
+        filteredChecklist[type][subtype] = { ...filteredChecklist[type][subtype], taskid, completed, has_comments, has_attachment };
       }
     }
     res.json(filteredChecklist);
@@ -545,6 +552,12 @@ async function getProjectChecklist(req, res) {
   }
 }
 
+async function getUserName(userid) {
+  const { data, error } = await supabase.from("users").select("username").eq("userid", userid);
+  return data[0]["username"];
+}
+
+//helper
 async function getTaskComments(req, res) {
   const { taskid } = req.query;
 
@@ -552,20 +565,21 @@ async function getTaskComments(req, res) {
     return res.status(400).json({ error: "Missing taskid" });
   }
 
-  const { data, error } = await supabase
-    .from("checklist")
-    .select("comments")
-    .eq("taskid", taskid);
+  const { data: commentData, error: commentError } = await supabase
+    .from("checklist_comments")
+    .select("commentid,comments,username,userid").
+    eq("taskid", taskid).order("timestamp", { ascending: true });
 
-  if (error) {
-    console.error("Error fetching comments:", error.message);
-    return res.status(500).json({ error: error.message });
+  console.log(commentData)
+  if (commentError) {
+    console.error("Error fetching comments:", commentError.message);
+    return res.status(500).json({ error: commentError.message });
   }
-  return res.status(200).json(data[0]);
+  return res.status(200).json(commentData);
 }
 
-async function updateTaskComments(req, res) {
-  const { taskid, comments } = req.body;
+async function addTaskComments(req, res) {
+  const { taskid, comments, projectid } = req.body;
   if (!taskid) {
     return res.status(400).json({ error: "Missing 'taskid' in request body." });
   }
@@ -573,7 +587,11 @@ async function updateTaskComments(req, res) {
   if (typeof comments !== "string") {
     return res.status(400).json({ error: "'comments' must be a string." });
   }
-  const { data, error } = await supabase.from("checklist").update({ comments: comments }).eq("taskid", taskid).select();
+  const username = await getUserName(req.user.id)
+  console.log(username)
+  const { data, error } = await supabase
+    .from("checklist_comments")
+    .upsert([{ taskid, comments: comments, projectid: projectid, timestamp: new Date().toISOString(), username: username, userid: req.user.id }]).select();
   if (error) {
     console.error("Error updating checklist comments:", error.message);
     return res.status(500).json({ error: error.message });
@@ -581,15 +599,122 @@ async function updateTaskComments(req, res) {
   if (!data || data.length === 0) {
     return res.status(404).json({ error: `No checklist entry found for taskid: ${taskid}` });
   }
-  return res.status(200).json({ success: true, updatedData: data });
+  const { data: commentUpdated, error: commentError } = await supabase.from("checklist").update({ has_comments: true }).eq("taskid", taskid).select();
+
+  if (commentError) {
+    console.error("Error updating checklist.has_comments:", commentError.message);
+    return res.status(500).json({ error: "Comment saved, but failed to flag checklist entry. " + commentError.message });
+  }
+
+  if (!commentUpdated || commentUpdated.length === 0) {
+    console.warn("Checklist taskid not found while updating has_comments.");
+    return res.status(404).json({ error: "Comment saved, but checklist entry not found for taskid: " + taskid });
+  }
+
+  return res.status(200).json({ success: true, updatedData: data, updatedChecklist: commentUpdated });
 }
 
+async function updateTaskComments(req, res) {
+  const { commentid, comments } = req.body;
+  const { data, error } = await supabase.from("checklist_comments").select("userid").eq("commentid", commentid);
+  if (data[0]["userid"]) {
+    if (data[0]["userid"] != req.user.id) {
+      return res.status(403).json({ error: "Forbidden: You are not the owner of this comment." });
+    }
+  }
+  // Validate inputs
+  if (!commentid) {
+    return res.status(400).json({ error: "Missing 'commentid' in request body." });
+  }
+
+  if (typeof comments !== "string") {
+    return res.status(400).json({ error: "'comments' must be a string." });
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from("checklist_comments")
+      .update({ comments })
+      .eq("commentid", commentid)
+      .select();
+
+    if (error) {
+      console.error("Error updating comment:", error.message);
+      return res.status(500).json({ error: "Failed to update comment: " + error.message });
+    }
+
+    if (!data || data.length === 0) {
+      return res.status(404).json({ error: "Comment not found or no changes made." });
+    }
+
+    return res.status(200).json({ success: true, updated: data });
+  } catch (err) {
+    console.error("Unexpected error:", err);
+    return res.status(500).json({ error: "Unexpected error occurred." });
+  }
+}
+async function deleteTaskComments(req, res) {
+  const { commentid, taskid } = req.query;
+  const { data, error } = await supabase.from("checklist_comments").select("userid").eq("commentid", commentid);
+
+  if (data[0] && data[0]["userid"]) {
+    if (data[0]["userid"] != req.user.id) {
+      return res.status(403).json({ error: "Forbidden: You are not the owner of this comment." });
+    }
+  }
+  if (!commentid) {
+    return res.status(400).json({ error: "Missing 'taskid' in request query." });
+  }
+  if (!data[0]) {
+    return res.status(400).json({ error: "No comment with commentid" });
+  }
+  try {
+    const { data, error } = await supabase.from("checklist_comments").delete().eq("commentid", commentid).select("*")
+
+    if (error) {
+      return res.status(500).json({ error: error.message });
+    }
+
+    if (!data || data.length === 0) {
+      return res.status(404).json({ error: "Comment not found" });
+    }
+    //check if there are any remaining comments for a particular task
+    const { data: projData, error: projError } = await supabase.from("checklist_comments").select("commentid").eq("taskid", taskid)
+    if (projError) {
+      console.error("Error querying checklist:", projError.message);
+      return res.status(500).json({ error: "Failed to query checklist" });
+    }
+    console.log(projData)
+
+    if (!projData || projData.length === 0) {
+      const { data: noCommentUpdateData, error: noCommentUpdateError } = await supabase
+        .from("checklist")
+        .update({ has_comments: false })
+        .eq("taskid", taskid)
+        .select("*");
+
+      if (noCommentUpdateError) {
+        console.error("Error updating has_comments:", noCommentUpdateError.message);
+        return res.status(500).json({ error: "Failed to update has_comments" });
+      }
+    }
+
+    return res.status(200).json({ success: true, deleted: data });
+  } catch (err) {
+    console.error("Unexpected error:", err);
+    return res.status(500).json({ error: "Unexpected server error" });
+  }
+
+}
 async function getBlobUrl(req, res) {
   const { taskid } = req.query;
   if (!taskid) {
-    return res.status(400).json({ error: "Missing 'taskid' in request body." });
+    return res.status(400).json({ error: "Missing 'taskid' in request query." });
   }
   const { data, error } = await supabase.from("checklist_attachments").select("bloburl").eq("taskid", taskid);
+  if (error || !data || data.length === 0) {
+    return res.status(200).json(null);
+  }
   const url = await generateSasUrl("checklist-attachments", data[0].bloburl)
   return res.status(200).json(url);
 }
@@ -598,29 +723,64 @@ async function updateBlobUrl(taskid, blobUrl) {
   if (!taskid) {
     throw new Error("Missing taskid");
   }
+
   if (!blobUrl) {
     throw new Error("Missing blobUrl");
   }
-  const { data, error } = await supabase
-    .from("checklist_attachments")
-    .upsert([{ taskid, bloburl: blobUrl }], { onConflict: 'taskid' })
-    .select();
 
-  if (error) {
-    const isFKError = error.message.includes("violates foreign key constraint");
+  try {
+    const { data: blobData, error: blobError } = await supabase
+      .from("checklist_attachments")
+      .upsert([{ taskid, bloburl: blobUrl }], { onConflict: 'taskid' })
+      .select();
 
-    if (isFKError) {
-      console.error("Foreign key error: taskid does not exist in parent table");
+    if (blobError) {
+      const isFKError = blobError.message.includes("violates foreign key constraint");
+      if (isFKError) {
+        console.error("Foreign key constraint violation:", blobError.message);
+        return {
+          success: false,
+          error: "Invalid taskid – does not exist in checklist table.",
+        };
+      }
+
+      console.error("Error during blob URL upsert:", blobError.message);
       return {
         success: false,
-        error: "No such taskid found in checklist_attachments database.",
+        error: blobError.message,
       };
     }
-    console.error("Error updating blob url:", error.message);
-    return { success: false, error: error.message };
+
+    const { data: updateData, error: updateError } = await supabase
+      .from("checklist")
+      .update({ has_attachment: true })
+      .eq("taskid", taskid);
+
+    if (updateError) {
+      console.error("Error updating checklist record:", updateError.message);
+      return {
+        success: false,
+        error: updateError.message,
+        blobData, // partial success info
+      };
+    }
+
+    // 3. Success!
+    return {
+      success: true,
+      blobData,
+      checklistUpdate: updateData,
+    };
+
+  } catch (err) {
+    console.error("Unexpected exception in updateBlobUrl:", err.message);
+    return {
+      success: false,
+      error: "Unexpected error occurred. Please try again.",
+    };
   }
-  return { success: true, updatedData: data };
 }
+
 
 async function uploadBlobAzure(req, res) {
   const form = new formidable.IncomingForm();
@@ -653,4 +813,4 @@ async function uploadBlobAzure(req, res) {
   });
 }
 
-module.exports = { equipment, getProjects, getStakeholders, newProject, changeProjectStage, saveProject, processRequest, getScope, generateChecklist, insertChecklistEntries, updateChecklistCompletion, getProjectChecklist, getTaskComments, updateTaskComments, getBlobUrl, updateBlobUrl, uploadBlobAzure };
+module.exports = { equipment, getProjects, getStakeholders, newProject, changeProjectStage, saveProject, processRequest, getScope, generateChecklist, insertChecklistEntries, updateChecklistCompletion, getProjectChecklist, getTaskComments, addTaskComments, updateTaskComments, deleteTaskComments, getBlobUrl, updateBlobUrl, uploadBlobAzure };
