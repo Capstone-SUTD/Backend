@@ -30,11 +30,11 @@ async function approveFile(req, res) {
     if (approvedCount === 0 && userRole !== "HSEOfficer") {
         return res.status(403).json({ error: "Only HSEOfficer can proceed" });
     }
-    if (approvedCount === 1 && userRole !== "Operations") {
-        return res.status(403).json({ error: "Only Operations Manager can proceed" });
-    }
-    if (approvedCount === 2 && userRole !== "ProjectManager") {
+    if (approvedCount === 1 && userRole !== "ProjectManager") {
         return res.status(403).json({ error: "Only Project Manager can proceed" });
+    }
+    if (approvedCount === 2 && userRole !== "Head") {
+        return res.status(403).json({ error: "Only Head of GPIS can proceed" });
     }
     
     const { data: _ , error } = await supabase
@@ -75,11 +75,11 @@ async function rejectFile(req, res) {
     if (approvedCount === 0 && userRole !== "HSEOfficer") {
         return res.status(403).json({ error: "Only HSEOfficer can proceed" });
     }
-    if (approvedCount === 1 && userRole !== "Operations") {
-        return res.status(403).json({ error: "Only Operations Manager can proceed" });
-    }
-    if (approvedCount === 2 && userRole !== "ProjectManager") {
+    if (approvedCount === 1 && userRole !== "ProjectManager") {
         return res.status(403).json({ error: "Only Project Manager can proceed" });
+    }
+    if (approvedCount === 2 && userRole !== "Head") {
+        return res.status(403).json({ error: "Only Head of GPIS can proceed" });
     }
 
     const { data : _ , error } = await supabase

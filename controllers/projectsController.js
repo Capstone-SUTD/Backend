@@ -362,6 +362,7 @@ async function newProject(req, res) {
     role: s.role
   }));
   await supabase.from("stakeholders").insert(stakeholderEntries);
+  await supabase.from("stakeholders").insert({projectid, userid: 13, role: "Head" })
 
   const threshold = { weight: 30480, length: 12.03, breadth: 2.35, height: 2.39 };
 
