@@ -8,6 +8,39 @@ const streamifier = require('streamifier');
 const { getFullChecklist, uploadFile, generateSasUrl } = require("../utils/azureFiles.js");
 const { response } = require("express");
 
+async function closeProject(req, res) {
+  const { projectid } = req.body;
+  const userid = req.user.id;
+
+  const { data: userData, error: userError } = await supabase
+    .from("stakeholders")
+    .select('*')
+    .eq('projectid', projectid)
+    .eq('userid', userid)
+    .single();
+
+  console.log(userData);
+  console.log(userError);
+
+  if (userError || !userData) {
+    return res.status(403).json({ error: "You are not a stakeholder for this project." });
+  }
+
+  if (userData.role != "Operations") {
+    return res.status(403).json({ error: "Only Operations Manager can close the project." });
+  } else {
+    const { error: updateError } = await supabase
+      .from("projects")
+      .update({ stage: "Project Completion" })
+      .eq("projectid", projectid);
+
+    if (updateError) {
+      return res.status(500).json({ error: "Failed to update project stage." });
+    }
+
+    return res.status(200).json({ message: "Project successfully closed." });
+  }
+}
 
 // Helper function to get project details from the database
 async function getProjectDetails(projectId) {
@@ -472,7 +505,7 @@ async function newProject(req, res) {
 
   const { data: projectData, error: projectError } = await supabase
     .from("projects")
-    .insert([{ projectname, client, emailsubjectheader, startdate: new Date().toISOString(), stage: "seller" }])
+    .insert([{ projectname, client, emailsubjectheader, startdate: new Date().toISOString(), stage: "Project Kickoff" }])
     .select("projectid")
     .single();
 
@@ -1031,4 +1064,4 @@ async function uploadBlobAzure(req, res) {
   });
 }
 
-module.exports = { categorizeScope, getProjectDetails, transformProjectData, submitFeedback, stakeholderComments, equipment, getProjects, getStakeholders, newProject, changeProjectStage, saveProject, processRequest, getScope, generateChecklist, insertChecklistEntries, updateChecklistCompletion, getProjectChecklist, getTaskComments, addTaskComments, updateTaskComments, deleteTaskComments, getBlobUrl, updateBlobUrl, uploadBlobAzure };
+module.exports = { closeProject, categorizeScope, getProjectDetails, transformProjectData, submitFeedback, stakeholderComments, equipment, getProjects, getStakeholders, newProject, changeProjectStage, saveProject, processRequest, getScope, generateChecklist, insertChecklistEntries, updateChecklistCompletion, getProjectChecklist, getTaskComments, addTaskComments, updateTaskComments, deleteTaskComments, getBlobUrl, updateBlobUrl, uploadBlobAzure };

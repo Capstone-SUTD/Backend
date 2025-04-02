@@ -1,6 +1,6 @@
 const express = require("express");
 const { verifyToken } = require("../middleware/authMiddleware.js");
-const { submitFeedback, stakeholderComments, equipment, getProjects, getStakeholders, newProject, changeProjectStage, saveProject, processRequest, getScope, generateChecklist, insertChecklistEntries, updateChecklistCompletion, getProjectChecklist, getBlobUrl, updateBlobUrl, uploadBlobAzure, updateTaskComments, getTaskComments, addTaskComments, deleteTaskComments } = require("../controllers/projectsController.js");
+const { submitFeedback, stakeholderComments, equipment, getProjects, getStakeholders, newProject, changeProjectStage, saveProject, processRequest, getScope, generateChecklist, insertChecklistEntries, updateChecklistCompletion, getProjectChecklist, getBlobUrl, updateBlobUrl, uploadBlobAzure, updateTaskComments, getTaskComments, addTaskComments, deleteTaskComments, closeProject } = require("../controllers/projectsController.js");
 
 const router = express.Router();
 
@@ -25,5 +25,6 @@ router.post("/upload-blob-azure", verifyToken, uploadBlobAzure)
 router.delete("/delete-task-comment",verifyToken,deleteTaskComments)
 router.post("/stakeholder-comments", verifyToken, stakeholderComments)
 router.post("/feedback", verifyToken, submitFeedback)
+router.post("/close", verifyToken, closeProject)
 
 module.exports = router;
