@@ -8,6 +8,28 @@ const streamifier = require('streamifier');
 const { getFullChecklist, uploadFile, generateSasUrl } = require("../utils/azureFiles.js");
 const { response } = require("express");
 
+async function getStage(req, res) {
+  try {
+    const projectid = parseInt(req.query.projectid, 0);
+    if (!projectid) return res.status(400).json({ error: "Project ID is required" });
+
+    const { data: projectData, error: projectError } = await supabase
+    .from("projects")
+    .select('*')
+    .eq('projectid', projectid)
+    .single();
+
+    if (projectError || !projectData) {
+      return res.status(403).json({ error: "Project not found." });
+    }
+
+    return res.status(200).json({stage: projectData.stage});
+  } catch (err) {
+    throw new Error(`Error fetching project details: ${err.message}`);
+  }
+};
+
+
 async function closeProject(req, res) {
   const { projectid } = req.body;
   const userid = req.user.id;
@@ -179,6 +201,15 @@ async function processRequest(req, res) {
     const scopeRequestBody = { scope: scopeCategory, projectid: projectid };
     const response2 = await axios.post('http://127.0.0.1:5000/generate_ra', scopeRequestBody);
     if (!response2?.data) throw new Error("RA API did not return any data");
+    const { error: updateError } = await supabase
+      .from("projects")
+      .update({ stage: "MSRA Generated" })
+      .eq("projectid", projectid);
+
+    console.log(updateError);
+    if (updateError) {
+      return res.status(500).json({ error: "Failed to update project stage." });
+    }
     return res.status(200).json({
       first_api_response: response1.data,
       second_api_response: response2.data
@@ -1064,4 +1095,4 @@ async function uploadBlobAzure(req, res) {
   });
 }
 
-module.exports = { closeProject, categorizeScope, getProjectDetails, transformProjectData, submitFeedback, stakeholderComments, equipment, getProjects, getStakeholders, newProject, changeProjectStage, saveProject, processRequest, getScope, generateChecklist, insertChecklistEntries, updateChecklistCompletion, getProjectChecklist, getTaskComments, addTaskComments, updateTaskComments, deleteTaskComments, getBlobUrl, updateBlobUrl, uploadBlobAzure };
+module.exports = { getStage, closeProject, categorizeScope, getProjectDetails, transformProjectData, submitFeedback, stakeholderComments, equipment, getProjects, getStakeholders, newProject, changeProjectStage, saveProject, processRequest, getScope, generateChecklist, insertChecklistEntries, updateChecklistCompletion, getProjectChecklist, getTaskComments, addTaskComments, updateTaskComments, deleteTaskComments, getBlobUrl, updateBlobUrl, uploadBlobAzure };

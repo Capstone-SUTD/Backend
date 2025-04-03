@@ -44,6 +44,37 @@ async function approveFile(req, res) {
 
     if (error) return res.status(500).json({ error: error.message });
 
+    if (approvedCount === 0) {
+        const { error: updateError } = await supabase
+        .from("projects")
+        .update({ stage: "Approved - HSE" })
+        .eq("projectid", projectid);
+
+        if (updateError) {
+        return res.status(500).json({ error: "Failed to update project stage." });
+        }
+    }
+    if (approvedCount === 1) {
+        const { error: updateError } = await supabase
+        .from("projects")
+        .update({ stage: "Approved - PM" })
+        .eq("projectid", projectid);
+
+        if (updateError) {
+        return res.status(500).json({ error: "Failed to update project stage." });
+        }
+    }
+    if (approvedCount === 2) {
+        const { error: updateError } = await supabase
+        .from("projects")
+        .update({ stage: "Approved - Mr. Jeong" })
+        .eq("projectid", projectid);
+
+        if (updateError) {
+        return res.status(500).json({ error: "Failed to update project stage." });
+        }
+    }
+
     res.status(200).json({ message: "Approved Successfully" });
 }
 

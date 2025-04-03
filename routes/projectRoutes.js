@@ -1,6 +1,6 @@
 const express = require("express");
 const { verifyToken } = require("../middleware/authMiddleware.js");
-const { submitFeedback, stakeholderComments, equipment, getProjects, getStakeholders, newProject, changeProjectStage, saveProject, processRequest, getScope, generateChecklist, insertChecklistEntries, updateChecklistCompletion, getProjectChecklist, getBlobUrl, updateBlobUrl, uploadBlobAzure, updateTaskComments, getTaskComments, addTaskComments, deleteTaskComments, closeProject } = require("../controllers/projectsController.js");
+const { getStage, submitFeedback, stakeholderComments, equipment, getProjects, getStakeholders, newProject, changeProjectStage, saveProject, processRequest, getScope, generateChecklist, insertChecklistEntries, updateChecklistCompletion, getProjectChecklist, getBlobUrl, updateBlobUrl, uploadBlobAzure, updateTaskComments, getTaskComments, addTaskComments, deleteTaskComments, closeProject } = require("../controllers/projectsController.js");
 
 const router = express.Router();
 
@@ -20,6 +20,7 @@ router.get("/get-task-comments", verifyToken, getTaskComments)
 router.post("/add-task-comments", verifyToken, addTaskComments)
 router.post("/update-task-comments", verifyToken, updateTaskComments)
 router.get("/get-blob-url", verifyToken, getBlobUrl)
+router.get("/get-stage", verifyToken, getStage)
 router.post("/update-blob-url", verifyToken, updateBlobUrl)
 router.post("/upload-blob-azure", verifyToken, uploadBlobAzure)
 router.delete("/delete-task-comment",verifyToken,deleteTaskComments)
