@@ -6,7 +6,6 @@ const fs = require("fs");
 const FormData = require('form-data');
 const streamifier = require('streamifier');
 const { getFullChecklist, uploadFile, generateSasUrl } = require("../utils/azureFiles.js");
-const { response } = require("express");
 
 async function getStage(req, res) {
   try {
@@ -169,7 +168,7 @@ async function equipment(req, res) {
     "weight": weight
   }
   try {
-    const response = await axios.post('http://127.0.0.1:5000/equipment', requestBody);
+    const response = await axios.post('https://subsystems.azurewebsites.net/api/equipment', requestBody);
     if (!response?.data) {
       return res.status(502).json({ error: 'No data returned from equipment service.' });
     }
@@ -193,13 +192,13 @@ async function processRequest(req, res) {
     const projectDetails = await getProjectDetails(projectid);
 
     const requestBody = transformProjectData(projectDetails);
-    const response1 = await axios.post('http://127.0.0.1:5000/generate_ms', requestBody);
+    const response1 = await axios.post('https://subsystems.azurewebsites.net/api/generate_ms', requestBody);
     if (!response1?.data) throw new Error("MS API did not return any data");
 
     const scopeCategory = categorizeScope(projectDetails.scopes);
     console.log(scopeCategory);
     const scopeRequestBody = { scope: scopeCategory, projectid: projectid };
-    const response2 = await axios.post('http://127.0.0.1:5000/generate_ra', scopeRequestBody);
+    const response2 = await axios.post('https://subsystems.azurewebsites.net/api/generate_ra', scopeRequestBody);
     if (!response2?.data) throw new Error("RA API did not return any data");
     const { error: updateError } = await supabase
       .from("projects")
@@ -299,7 +298,7 @@ async function saveProject(req, res) {
         vendorMSForm.append("equipment", equip);
 
         // Send the request with form-data
-        await axios.post("http://127.0.0.1:5000/MSReader", vendorMSForm, {
+        await axios.post("https://subsystems.azurewebsites.net/api/MSReader", vendorMSForm, {
           headers: {
             ...vendorMSForm.getHeaders(), // Automatically set proper headers for form-data
           }
@@ -323,7 +322,7 @@ async function saveProject(req, res) {
         const vendorRAForm = new FormData();
         vendorRAForm.append("file", vendorRAStream, { filename: "vendorRAFile" });
 
-        await axios.post("http://127.0.0.1:5000/RAReader", vendorRAForm, {
+        await axios.post("https://subsystems.azurewebsites.net/api/RAReader", vendorRAForm, {
           headers: vendorRAForm.getHeaders()
         });
         console.log("RA Read Successful");
