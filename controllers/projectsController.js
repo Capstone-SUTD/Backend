@@ -281,9 +281,7 @@ async function saveProject(req, res) {
     );
     if (craneEquipment) {
       equip = craneEquipment.equipment;
-    } else {
-      equip = "";
-    }
+    } 
 
     // Handle VendorMS API Call
     try {
