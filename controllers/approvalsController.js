@@ -1,5 +1,8 @@
 const supabase = require("../config/db");
 const formidable = require('formidable');
+const axios = require("axios");
+const FormData = require('form-data');
+const fs = require("fs");
 const { uploadFile, downloadFile } = require("../utils/azureFiles");
 
 async function approveFile(req, res) {
@@ -128,7 +131,7 @@ function getFileExtension(fileName) {
     return ext;
 }
 
-async function uploadNew (req, res) {
+async function uploadNew(req, res) {
     const form = new formidable.IncomingForm();
 
     form.parse(req, async (err, fields, files) => {
@@ -137,51 +140,116 @@ async function uploadNew (req, res) {
         }
 
         const { projectid, filetype } = fields;
-        const file = files.file[0];
+        const uploadedFile = files?.file;
 
         const userid = req.user.id;
-        if (!projectid || !file || !filetype ) {
+        if (!projectid || !uploadedFile || !filetype) {
             return res.status(400).json({ error: "All fields are required" });
         }
 
         const fileTypeString = Array.isArray(filetype) ? filetype[0] : filetype;
-        const projectIdInt = parseInt(projectid[0], 10); 
+        const projectIdInt = parseInt(projectid[0], 10);
 
-        var container = ""
-        var filename = ""
-        const randomNum = Math.floor(Math.random() * 1000000); 
-        const extension = getFileExtension(file.originalFilename);
+        let container = "";
+        let filename = "";
+        const randomNum = Math.floor(Math.random() * 1000000);
+        const extension = getFileExtension(uploadedFile[0].originalFilename);
 
         if (fileTypeString === "MS") {
             container = "generated-ms";
             filename = `MS_${randomNum}`;
-        } 
-
-        if (fileTypeString === "RA") {
+        } else if (fileTypeString === "RA") {
             container = "generated-ra";
             filename = `RA_${randomNum}`;
-        } 
+        } else {
+            return res.status(400).json({ error: "Invalid file type" });
+        }
 
         // Add extension to the filename
         const filenameWithExtension = `${filename}.${extension}`;
-        const bloburl = await uploadFile(container, file, filenameWithExtension);
+        const bloburl = await uploadFile(container, uploadedFile[0], filenameWithExtension);
 
-        const { data : fileInfo, error : fileError } = await supabase
-        .from("files")
-        .select("*")
-        .eq("projectid", projectIdInt)
-        .eq("filetype", fileTypeString);
-        if (fileError) return res.status(500).json({ error: error.message });
+        const { data: fileInfo, error: fileError } = await supabase
+            .from("files")
+            .select("*")
+            .eq("projectid", projectIdInt)
+            .eq("filetype", fileTypeString);
+
+        if (fileError) return res.status(500).json({ error: fileError.message });
+
         const version = fileInfo.length + 1;
 
-        const { data : _ , error } = await supabase
-        .from("files")
-        .insert([{ projectid : projectIdInt, filetype : fileTypeString, bloburl, version, uploadedby : userid }])
-        .select();
+        const { error } = await supabase
+            .from("files")
+            .insert([{ projectid: projectIdInt, filetype: fileTypeString, bloburl, version, uploadedby: userid }]);
+
         if (error) return res.status(500).json({ error: error.message });
 
-        res.status(200).json({"message":"Upload successful", "blobUrl" : bloburl});
-    })
+        // Read file as a Buffer
+        const filePath = uploadedFile[0].filepath;
+        const fileBuffer = fs.readFileSync(filePath);
+
+        const uploadForm = new FormData();
+        uploadForm.append("file", fileBuffer, { filename: filenameWithExtension, contentType: uploadedFile[0].mimetype });
+
+        if (fileTypeString === "MS") {
+            try {
+                const response = await axios.post("https://subsystems.azurewebsites.net/api/selflearn", uploadForm, {
+                    headers: {
+                        ...uploadForm.getHeaders(), // Ensure correct headers
+                    },
+                });
+    
+                // If API returns 400, do nothing and return success response
+                if (response.status === 400) {
+                    return res.status(200).json({ "message": "Upload successful", "blobUrl": bloburl });
+                }
+    
+                // Extract values from API response
+                let equipment = response.data.equipment_name;
+                const procedure = response.data.procedure_steps;
+                equipment = equipment.split(" ").slice(1).join(" ");
+    
+                // Determine scope
+                const scope = equipment.toLowerCase().includes("crane") ? "Lifting" : "Transportation";
+    
+                // Check if a record already exists in ms_reader
+                const { data: existingRecord, error: fetchError } = await supabase
+                    .from("ms_reader")
+                    .select("*")
+                    .eq("scope", scope)
+                    .eq("equipment", equipment)
+                    .maybeSingle();
+    
+                if (fetchError) return res.status(500).json({ error: fetchError.message });
+    
+                if (existingRecord) {
+                    // Update existing record
+                    const { error: updateError } = await supabase
+                        .from("ms_reader")
+                        .update({ procedure })
+                        .eq("scope", scope)
+                        .eq("equipment", equipment);
+    
+                    if (updateError) return res.status(500).json({ error: updateError.message });
+                } else {
+                    // Insert new record
+                    const { error: insertError } = await supabase
+                        .from("ms_reader")
+                        .insert([{ procedure, equipment, scope }]);
+    
+                    if (insertError) return res.status(500).json({ error: insertError.message });
+                }
+    
+                // Final success response
+                res.status(200).json({ "message": "Upload successful", "blobUrl": bloburl });
+    
+            } catch (uploadError) {
+                console.error("File Upload Error:", uploadError.message);
+                return res.status(200).json({ "message": "Upload successful", "blobUrl": bloburl });
+            }
+        } 
+    });
 }
 
 async function download (req, res) {

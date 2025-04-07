@@ -13,16 +13,16 @@ async function getStage(req, res) {
     if (!projectid) return res.status(400).json({ error: "Project ID is required" });
 
     const { data: projectData, error: projectError } = await supabase
-    .from("projects")
-    .select('*')
-    .eq('projectid', projectid)
-    .single();
+      .from("projects")
+      .select('*')
+      .eq('projectid', projectid)
+      .single();
 
     if (projectError || !projectData) {
       return res.status(403).json({ error: "Project not found." });
     }
 
-    return res.status(200).json({stage: projectData.stage});
+    return res.status(200).json({ stage: projectData.stage });
   } catch (err) {
     throw new Error(`Error fetching project details: ${err.message}`);
   }
@@ -281,9 +281,7 @@ async function saveProject(req, res) {
     );
     if (craneEquipment) {
       equip = craneEquipment.equipment;
-    } else {
-      equip = "";
-    }
+    } 
 
     // Handle VendorMS API Call
     try {
@@ -437,7 +435,6 @@ async function getProjects(req, res) {
 async function submitFeedback(req, res) {
   const { projectid, comments, role } = req.body;
   const userid = req.user.id;
-  console.log(userid)
 
   if (!projectid) {
     return res.status(400).json({ error: "All fields are required" });
@@ -835,8 +832,10 @@ async function addTaskComments(req, res) {
     if (typeof comments !== "string") {
       return res.status(400).json({ error: "'comments' must be a string." });
     }
+    // console.log(projectid)
+    // console.log(typeof (projectid))
     if (!projectid || typeof projectid !== "string") {
-      return res.status(400).json({ error: "'projectid' is required and must be a number." });
+      return res.status(400).json({ error: "'projectid' is required and must be a string." });
     }
     const userId = req?.user?.id;
     if (!userId) {
@@ -890,14 +889,13 @@ async function updateTaskComments(req, res) {
   }
 
   const { data: existingComment, error: fetchError } = await supabase.from("checklist_comments").select("userid").eq("commentid", commentid);
-
   if (fetchError) {
     console.error("Error fetching comment:", fetchError.message);
     return res.status(500).json({ error: "Database error while checking comment ownership." });
   }
 
 
-  if (!existingComment || existingComment.userid !== userId) {
+  if (!existingComment || existingComment[0].userid !== userId) {
     return res.status(403).json({ error: "Forbidden: You are not the owner of this comment." });
   }
 
