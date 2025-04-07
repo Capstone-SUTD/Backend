@@ -438,7 +438,6 @@ async function getProjects(req, res) {
 async function submitFeedback(req, res) {
   const { projectid, comments, role } = req.body;
   const userid = req.user.id;
-  console.log(userid)
 
   if (!projectid) {
     return res.status(400).json({ error: "All fields are required" });
