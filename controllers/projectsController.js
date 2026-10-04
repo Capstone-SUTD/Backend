@@ -855,8 +855,8 @@ async function addTaskComments(req, res) {
     const { data: checklistUpdate, error: checklistError } = await supabase.from("checklist").update({ has_comments: true }).eq("taskid", taskid).select();
 
     if (checklistError) {
-      console.error("Error updating checklist.has_comments:", commentError.message);
-      return res.status(500).json({ error: "Comment saved, but failed to flag checklist entry. " + commentError.message });
+      console.error("Error updating checklist.has_comments:", checklistError.message);
+      return res.status(500).json({ error: "Comment saved, but failed to flag checklist entry. " + checklistError.message });
     }
 
     if (!checklistUpdate || checklistUpdate.length === 0) {
