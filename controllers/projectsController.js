@@ -1086,8 +1086,11 @@ async function uploadBlobAzure(req, res) {
       const blobUrl = await uploadFile(containerName, file, blobName);
       const rawTaskId = fields.taskid;
       const taskid = Array.isArray(rawTaskId) ? parseInt(rawTaskId[0]) : parseInt(rawTaskId);
-      await updateBlobUrl(taskid, blobName);
-      res.status(200).json({ blobUrl });
+      const persistenceResult = await updateBlobUrl(taskid, blobName);
+      if (!persistenceResult.success) {
+        return res.status(500).json({ error: persistenceResult.error || "Failed to save attachment." });
+      }
+      return res.status(200).json({ blobUrl });
     } catch (uploadError) {
       console.error("Upload error:", uploadError.message);
       res.status(500).json({ error: "Upload failed" });
