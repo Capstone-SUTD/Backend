@@ -888,18 +888,21 @@ async function updateTaskComments(req, res) {
     return res.status(401).json({ error: "Unauthorized: user ID missing." });
   }
 
-  const { data: existingComment, error: fetchError } = await supabase.from("checklist_comments").select("userid").eq("commentid", commentid);
-  if (fetchError) {
-    console.error("Error fetching comment:", fetchError.message);
-    return res.status(500).json({ error: "Database error while checking comment ownership." });
-  }
-
-
-  if (!existingComment || existingComment[0].userid !== userId) {
-    return res.status(403).json({ error: "Forbidden: You are not the owner of this comment." });
-  }
-
   try {
+    const { data: existingComment, error: fetchError } = await supabase.from("checklist_comments").select("userid").eq("commentid", commentid);
+    if (fetchError) {
+      console.error("Error fetching comment:", fetchError.message);
+      return res.status(500).json({ error: "Database error while checking comment ownership." });
+    }
+
+    if (!existingComment || existingComment.length === 0) {
+      return res.status(404).json({ error: "Comment not found." });
+    }
+
+    if (existingComment[0].userid !== userId) {
+      return res.status(403).json({ error: "Forbidden: You are not the owner of this comment." });
+    }
+
     const { data: updatedComment, error: updateError } = await supabase
       .from("checklist_comments")
       .update({ comments })
@@ -907,8 +910,8 @@ async function updateTaskComments(req, res) {
       .select();
 
     if (updateError) {
-      console.error("Error updating comment:", error.message);
-      return res.status(500).json({ error: "Failed to update comment: " + error.message });
+      console.error("Error updating comment:", updateError.message);
+      return res.status(500).json({ error: "Failed to update comment: " + updateError.message });
     }
 
     if (!updatedComment || updatedComment.length === 0) {
@@ -920,7 +923,7 @@ async function updateTaskComments(req, res) {
       updated: updatedComment
     });
   } catch (err) {
-    console.error("Unexpected error:", updateError);
+    console.error("Unexpected error:", err);
     return res.status(500).json({ error: "Unexpected error occurred." });
   }
 }
